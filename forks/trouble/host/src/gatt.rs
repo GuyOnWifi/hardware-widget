@@ -302,22 +302,6 @@ impl<'stack, 'server, P: PacketPool> GattEvent<'stack, 'server, P> {
         }
     }
 
-    /// Custom function
-    pub async fn new_no_mtu_bs(
-        stack: &'reference Stack<'reference, C, P>,
-        connection: &Connection<'reference, P>,
-    ) -> Result<GattClient<'reference, C, P, MAX_SERVICES>, BleHostError<C::Error>> {
-        Ok(Self {
-            known_services: RefCell::new(heapless::Vec::new()),
-            stack,
-            connection: connection.clone(),
-
-            response_channel: Channel::new(),
-
-            notifications: PubSubChannel::new(),
-        })
-    }
-
     /// Accept the event, making it processed by the server.
     pub fn accept(self) -> Result<Reply<'stack, P>, Error> {
         match self {
@@ -877,6 +861,22 @@ impl<'reference, C: Controller, P: PacketPool, const MAX_SERVICES: usize> GattCl
             }
         }
 
+        Ok(Self {
+            known_services: RefCell::new(heapless::Vec::new()),
+            stack,
+            connection: connection.clone(),
+
+            response_channel: Channel::new(),
+
+            notifications: PubSubChannel::new(),
+        })
+    }
+
+    /// Custom function
+    pub async fn new_no_mtu_bs(
+        stack: &'reference Stack<'reference, C, P>,
+        connection: &Connection<'reference, P>,
+    ) -> Result<GattClient<'reference, C, P, MAX_SERVICES>, BleHostError<C::Error>> {
         Ok(Self {
             known_services: RefCell::new(heapless::Vec::new()),
             stack,
