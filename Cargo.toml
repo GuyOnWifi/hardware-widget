@@ -77,6 +77,7 @@ embassy-sync = "0.7.2"
 embedded-storage-async = "0.4.1"
 ssd1306 = { version = "0.10.0", features = ["async"] }
 embedded-graphics = "0.8.2"
+embedded-text = "0.7.3"
 
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
