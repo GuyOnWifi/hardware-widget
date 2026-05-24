@@ -1,0 +1,72 @@
+[package]
+name = "trouble-esp32-examples"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+embassy-executor = "0.9.1"
+esp-bootloader-esp-idf = "0.4.0"
+esp-backtrace = { version = "0.18.1", features = [ "panic-handler", "println" ] }
+esp-hal = { version = "1.0.0", features = [ "unstable" ] }
+esp-alloc = { version = "0.9.0" }
+esp-println = { version = "0.16.0", features = ["log-04"] }
+esp-radio = { version = "0.17.0", features = ["ble", "log-04", "unstable"] }
+esp-rtos = { version = "0.2.0", features = ["embassy", "esp-alloc", "esp-radio", "log-04"] }
+trouble-example-apps = { version = "0.1.0", path = "../apps", features = ["log"] }
+trouble-host = { path = "../../host", features = ["default-packet-pool-mtu-255"] }
+
+# for 'ble_bas_peripheral_bonding'
+embassy-embedded-hal = "0.5.0"
+esp-storage = { version = "0.8.1" }
+
+[features]
+default = ["esp32c3"]
+
+esp32 = ["esp-hal/esp32", "esp-backtrace/esp32", "esp-println/esp32", "esp-radio/esp32", "esp-rtos/esp32", "esp-storage/esp32", "esp-bootloader-esp-idf/esp32"]
+esp32c2 = ["esp-hal/esp32c2", "esp-backtrace/esp32c2", "esp-println/esp32c2", "esp-radio/esp32c2", "esp-rtos/esp32c2", "esp-storage/esp32c2", "esp-bootloader-esp-idf/esp32c2"]
+esp32c3 = ["esp-hal/esp32c3", "esp-backtrace/esp32c3", "esp-println/esp32c3", "esp-radio/esp32c3", "esp-rtos/esp32c3", "esp-storage/esp32c3", "esp-bootloader-esp-idf/esp32c3"]
+esp32c6 = ["esp-hal/esp32c6", "esp-backtrace/esp32c6", "esp-println/esp32c6", "esp-radio/esp32c6", "esp-rtos/esp32c6", "esp-storage/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
+esp32h2 = ["esp-hal/esp32h2", "esp-backtrace/esp32h2", "esp-println/esp32h2", "esp-radio/esp32h2", "esp-rtos/esp32h2", "esp-storage/esp32h2", "esp-bootloader-esp-idf/esp32h2"]
+esp32s3 = ["esp-hal/esp32s3", "esp-backtrace/esp32s3", "esp-println/esp32s3", "esp-radio/esp32s3", "esp-rtos/esp32s3", "esp-storage/esp32s3", "esp-bootloader-esp-idf/esp32s3"]
+
+security = [
+    "trouble-example-apps/security",
+]
+
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1 # LLVM can perform better optimizations using a single thread
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'thin'
+opt-level = 3
+overflow-checks = false
+
+[[bin]]
+name = "ble_bas_central_sec"
+required-features = ["security"]
+
+[[bin]]
+name = "ble_bas_peripheral_sec"
+required-features = ["security"]
+
+[[bin]]
+name = "ble_bas_peripheral_bonding"
+required-features = ["security"]
+
+# Enable for using latest 'main'
+[patch.crates-io]
+esp-alloc =             { git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }
+esp-backtrace =         { git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }
+esp-bootloader-esp-idf ={ git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }
+esp-hal =               { git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }
+esp-println =           { git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }
+esp-radio =             { git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }
+esp-rtos =              { git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }
+esp-storage =           { git = "https://github.com/lulf/esp-hal.git", rev="49ba429e34266bcac867b968e0a55b433d5a7c37" }

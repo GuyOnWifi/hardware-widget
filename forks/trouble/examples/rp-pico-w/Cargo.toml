@@ -1,0 +1,60 @@
+[package]
+name = "trouble-rp-examples"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+
+[dependencies]
+embassy-executor = { version = "0.9", default-features = false, features = ["arch-cortex-m", "executor-thread", "defmt", "executor-interrupt"] }
+embassy-time = { version = "0.5.0", default-features = false, features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-rp = { version = "0.9.0", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl", "rp2040"] }
+embassy-futures = "0.1.2"
+embassy-sync = { version = "0.7", features = ["defmt"] }
+
+futures = { version = "0.3", default-features = false, features = ["async-await"]}
+trouble-example-apps = { version = "0.1.0", path = "../apps", features = ["defmt"] }
+trouble-host = { path = "../../host", features = ["default-packet-pool-mtu-128"] }
+cyw43 = { version = "0.6.0", features = ["defmt", "firmware-logs", "bluetooth"] }
+cyw43-pio = { version = "0.9.0", features = ["defmt"] }
+
+defmt = "1.0"
+defmt-rtt = "1.0"
+panic-probe = { version = "1.0", features = ["print-defmt"] }
+
+cortex-m = { version = "0.7.6" }
+cortex-m-rt = "0.7.0"
+static_cell = "2"
+portable-atomic = { version = "1.5", features = ["critical-section"] }
+
+[build-dependencies]
+reqwest = { version = "0.12.9", features = ["blocking"]}
+
+[features]
+skip-cyw43-firmware = []
+
+[profile.release]
+debug = 2
+
+[patch.crates-io]
+#embassy-executor = {path = "../../../embassy/embassy-executor"}
+#embassy-rp = {path = "../../../embassy/embassy-rp"}
+#embassy-sync = {path = "../../../embassy/embassy-sync"}
+#embassy-futures = {path = "../../../embassy/embassy-futures"}
+#embassy-time = {path = "../../../embassy/embassy-time"}
+#embassy-time-driver = {path = "../../../embassy/embassy-time-driver"}
+#embassy-embedded-hal = {path = "../../../embassy/embassy-embedded-hal"}
+#embassy-hal-internal = {path = "../../../embassy/embassy-hal-internal"}
+#cyw43 = {path = "../../../embassy/cyw43"}
+#cyw43-pio = {path = "../../../embassy/cyw43-pio"}
+cyw43 = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+embassy-time-driver = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+embassy-rp = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+cyw43-pio = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy.git", rev = "ed8d4277cd8165c8b280ccbb1501534056691b6a" }
+#nrf-sdc = { path = "../../../nrf-sdc/nrf-sdc" }
+#nrf-mpsl = { path = "../../../nrf-sdc/nrf-mpsl" }
+#bt-hci = { path = "../../../bt-hci" }
+#bt-hci = { git = "https://github.com/embassy-rs/bt-hci.git", rev = "83a9e179ff019ed60abb73705f54383f89fc60fc" }

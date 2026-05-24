@@ -1,0 +1,42 @@
+[package]
+name = "trouble-example-apps"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+trouble-host = { path = "../../host", features = ["derive", "scan"] }
+bt-hci = { version = "0.8" }
+embassy-futures = "0.1.1"
+embassy-sync = { version = "0.7" }
+embassy-time = "0.5"
+embedded-hal-async = "1.0"
+static_cell = "2"
+heapless = "0.9"
+rand_core = { version = "0.6", default-features = false }
+
+# Used by 'security' feature
+embedded-storage-async = { version = "0.4.1", optional = true }
+sequential-storage = { version = "5.0.0", optional = true }
+
+defmt = { version = "1.0.1", optional = true }
+log = { version = "0.4", optional = true }
+
+
+[features]
+defmt = [
+    "dep:defmt",
+    "trouble-host/defmt",
+    "bt-hci/defmt",
+]
+log = [
+    "dep:log",
+    "trouble-host/log",
+    "bt-hci/log"
+]
+security = [
+    "trouble-host/security",
+    "dep:sequential-storage",
+    "dep:embedded-storage-async"
+]
+std = []
