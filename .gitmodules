@@ -1,0 +1,3 @@
+[submodule "forks/trouble"]
+	path = forks/trouble
+	url = https://github.com/embassy-rs/trouble.git
