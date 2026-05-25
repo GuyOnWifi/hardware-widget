@@ -1,0 +1,27 @@
+# Hardware Widget
+
+![3D render](images/HardwareWidget.png)
+
+## What is it?
+
+A macropad-like device featuring 3 buttons and a screen, to be used for anything! Currently features a Bluetooth Low Energy music display and controller.
+
+## What it does
+
+Displays information such as song title, song duration, song progress. Allows for the user to play/pause, seek forward/backwards in a track, and play next/previous.
+
+## Why // What makes it unique?
+
+This project was built to have a convenient display on my desk! It also served as a way to experiment with the newer BLE Services, which seem very promising for small peripherals like this.
+
+Uses the very new BLE Audio Services (Media Control Service) to display music information and controller! This service is very new and is experimental on many operating systems. Enables battery-powered devices like this to have a much longer battery life!
+
+## Internals
+
+Features a Xiao ESP32-C3, with a lithium battery, 3 keycaps & a 2.4" color TFT Display.
+
+![wiring](./images/Wiring.png)
+
+## Zine
+
+Check it out [here](./zine.pdf)
