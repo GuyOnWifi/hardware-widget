@@ -45,3 +45,7 @@ Check it out [here](./zine.pdf)
 ├── rust-toolchain.toml     # Pinned toolchain
 └── zine.pdf                # Project zine page
 ```
+
+## Building & Running
+
+Connect the ESP32 and run `cargo run --release`. The runner.sh file will take care of flashing & monitoring. Run in release mode for optimizations and shrinking bin sizes.
