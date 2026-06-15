@@ -22,34 +22,45 @@ use defmt::{Debug2Format, error, info, unwrap};
 use embassy_executor::Spawner;
 use embassy_futures::{join::join, select::select};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use embassy_time::Timer;
+use embassy_time::{Delay, Timer};
 use embedded_graphics::{
     image::{Image, ImageRaw},
-    mono_font::{MonoTextStyle, ascii::FONT_6X10},
-    pixelcolor::BinaryColor,
+    mono_font::{
+        MonoTextStyle,
+        ascii::{FONT_6X10, FONT_10X20},
+    },
+    pixelcolor::Rgb565,
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
     text::{Alignment, Text},
 };
+use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 use embedded_storage::nor_flash::{NorFlash, ReadNorFlash};
 use esp_hal::{
     Async,
     clock::CpuClock,
-    gpio::{Input, InputConfig, Pull},
-    i2c::master::{Config, I2c},
+    gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull},
     rng::{Trng, TrngSource},
+    spi::{
+        Mode,
+        master::{Config, Spi},
+    },
     time::Rate,
     timer::timg::TimerGroup,
 };
 use esp_radio::ble::controller::BleConnector;
 use esp_storage::FlashStorage;
+use lcd_async::{
+    Builder, Display, interface::SpiInterface, models::ILI9341Rgb565, options::Orientation,
+    raw_framebuf::RawFrameBuf,
+};
 use panic_rtt_target as _;
 use rtt_target::rtt_init_defmt;
 use sequential_storage::{
     cache::{KeyCacheImpl, NoCache},
     map::{Key, MapConfig, MapStorage, SerializationError, Value},
 };
-use ssd1306::{I2CDisplayInterface, Ssd1306Async, mode::BufferedGraphicsModeAsync, prelude::*};
+use static_cell::ConstStaticCell;
 use trouble_host::prelude::*;
 
 extern crate alloc;
@@ -57,16 +68,21 @@ extern crate alloc;
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 3;
 
-const SCREEN_WIDTH: i32 = 128;
-const SCREEN_HEIGHT: i32 = 64;
+const PLAY_IMG: ImageRaw<Rgb565> = ImageRaw::new(include_bytes!("../../images/play.bin"), 24);
+const PAUSE_IMG: ImageRaw<Rgb565> = ImageRaw::new(include_bytes!("../../images/pause.bin"), 24);
+const FORWARD_IMG: ImageRaw<Rgb565> =
+    ImageRaw::new(include_bytes!("../../images/skip-forward.bin"), 24);
+const BACKWARD_IMG: ImageRaw<Rgb565> =
+    ImageRaw::new(include_bytes!("../../images/skip-back.bin"), 24);
 
-const PLAY_IMG: ImageRaw<BinaryColor> = ImageRaw::new(include_bytes!("../../images/play.raw"), 24);
-const PAUSE_IMG: ImageRaw<BinaryColor> =
-    ImageRaw::new(include_bytes!("../../images/pause.raw"), 24);
-const FORWARD_IMG: ImageRaw<BinaryColor> =
-    ImageRaw::new(include_bytes!("../../images/skip-forward.raw"), 24);
-const BACKWARD_IMG: ImageRaw<BinaryColor> =
-    ImageRaw::new(include_bytes!("../../images/skip-back.raw"), 24);
+const HEIGHT: i32 = 240;
+const WIDTH: i32 = 320;
+
+// RGB 565 is 2 bytes
+const FRAME_BUFFER_SIZE: usize = WIDTH as usize * HEIGHT as usize * 2;
+
+static FRAME_BUFFER: ConstStaticCell<[u8; FRAME_BUFFER_SIZE]> =
+    ConstStaticCell::new([0u8; FRAME_BUFFER_SIZE]);
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -192,99 +208,82 @@ async fn gatt_client_task<T: Controller, P: PacketPool, const M: usize>(
     }
 }
 
-async fn draw_screen(
-    song_title: &str,
-    percentage: f32,
-    playing: bool,
-    display: &mut Ssd1306Async<
-        I2CInterface<I2c<'_, Async>>,
-        DisplaySize128x64,
-        BufferedGraphicsModeAsync<DisplaySize128x64>,
-    >,
-) {
-    display.clear(BinaryColor::Off).unwrap();
+async fn draw_screen(song_title: &str, percentage: f32, playing: bool, fbuf: &mut [u8]) {
+    let mut fbuf = RawFrameBuf::<Rgb565, _>::new(fbuf, WIDTH as usize, HEIGHT as usize);
 
-    let text_style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    fbuf.clear(Rgb565::BLACK).unwrap();
 
-    let display_text = if song_title.len() > 15 {
-        format!("{}...", &song_title[..12])
+    let text_style = MonoTextStyle::new(&FONT_10X20, Rgb565::RED);
+
+    let display_text = if song_title.len() > 30 {
+        format!("{}...", &song_title[..27])
     } else {
         song_title.into()
     };
 
     Text::with_alignment(
         &display_text,
-        Point::new(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 4),
+        Point::new(WIDTH / 2, HEIGHT / 4),
         text_style,
         Alignment::Center,
     )
-    .draw(display)
+    .draw(&mut fbuf)
     .unwrap();
 
     // TODO: Rounded rectangles
-    let width = (SCREEN_WIDTH as f32 * 0.8) as i32;
+    let width = (WIDTH as f32 * 0.8) as i32;
     let done = (percentage * width as f32) as i32;
-    let margin = (SCREEN_WIDTH as f32 * 0.1) as i32;
+    let margin = (WIDTH as f32 * 0.1) as i32;
+
+    Rectangle::new(Point::new(margin, HEIGHT / 2), Size::new(done as u32, 10))
+        .into_styled(
+            PrimitiveStyleBuilder::new()
+                .stroke_color(Rgb565::RED)
+                .stroke_width(1)
+                .fill_color(Rgb565::RED)
+                .build(),
+        )
+        .draw(&mut fbuf)
+        .unwrap();
 
     Rectangle::new(
-        Point::new(margin, SCREEN_HEIGHT / 2),
-        Size::new(done as u32, 4),
+        Point::new(margin + done, HEIGHT / 2),
+        Size::new((width - done) as u32, 10),
     )
     .into_styled(
         PrimitiveStyleBuilder::new()
-            .stroke_color(BinaryColor::On)
+            .stroke_color(Rgb565::RED)
             .stroke_width(1)
-            .fill_color(BinaryColor::On)
+            .fill_color(Rgb565::BLACK)
             .build(),
     )
-    .draw(display)
-    .unwrap();
-
-    Rectangle::new(
-        Point::new(margin + done, SCREEN_HEIGHT / 2),
-        Size::new((width - done) as u32, 4),
-    )
-    .into_styled(
-        PrimitiveStyleBuilder::new()
-            .stroke_color(BinaryColor::On)
-            .stroke_width(1)
-            .fill_color(BinaryColor::Off)
-            .build(),
-    )
-    .draw(display)
+    .draw(&mut fbuf)
     .unwrap();
 
     Image::with_center(
         if playing { &PAUSE_IMG } else { &PLAY_IMG },
-        Point::new(SCREEN_WIDTH / 2, 3 * SCREEN_HEIGHT / 4),
+        Point::new(WIDTH / 2, 3 * HEIGHT / 4),
     )
-    .draw(display)
+    .draw(&mut fbuf)
     .unwrap();
 
-    Image::with_center(
-        &BACKWARD_IMG,
-        Point::new(SCREEN_WIDTH / 4, 3 * SCREEN_HEIGHT / 4),
-    )
-    .draw(display)
-    .unwrap();
+    Image::with_center(&BACKWARD_IMG, Point::new(WIDTH / 4, 3 * HEIGHT / 4))
+        .draw(&mut fbuf)
+        .unwrap();
 
-    Image::with_center(
-        &FORWARD_IMG,
-        Point::new(3 * SCREEN_WIDTH / 4, 3 * SCREEN_HEIGHT / 4),
-    )
-    .draw(display)
-    .unwrap();
-
-    display.flush().await.unwrap();
+    Image::with_center(&FORWARD_IMG, Point::new(3 * WIDTH / 4, 3 * HEIGHT / 4))
+        .draw(&mut fbuf)
+        .unwrap();
 }
 
 async fn app_logic<T: Controller, P: PacketPool, const M: usize>(
     button_matrix: (&Input<'_>, &Input<'_>, &Input<'_>),
     client: &GattClient<'_, T, P, M>,
-    display: &mut Ssd1306Async<
-        I2CInterface<I2c<'_, Async>>,
-        DisplaySize128x64,
-        BufferedGraphicsModeAsync<DisplaySize128x64>,
+    fbuf: &mut [u8],
+    display: &mut Display<
+        SpiInterface<ExclusiveDevice<Spi<'_, Async>, Output<'_>, NoDelay>, Output<'_>>,
+        ILI9341Rgb565,
+        Output<'_>,
     >,
 ) {
     let services = client
@@ -345,10 +344,15 @@ async fn app_logic<T: Controller, P: PacketPool, const M: usize>(
                     .await
                     .unwrap();
                 let mut data = [0u8; 64];
-                let _ = client
+                client
                     .read_characteristic(&track_position_chr, &mut data)
                     .await
                     .unwrap();
+
+                // TODO: Maybe check?
+                let track_position =
+                    i32::from_le_bytes(data[..4].try_into().unwrap()) as f32 * 0.01;
+                info!("Track pos: {}", track_position);
 
                 let mut data = [0u8; 64];
                 client
@@ -357,18 +361,12 @@ async fn app_logic<T: Controller, P: PacketPool, const M: usize>(
                     .unwrap();
                 let playing = *data.first().unwrap_or(&0u8) == 0x01u8;
 
-                // TODO: Maybe check?
-                let track_position =
-                    i32::from_le_bytes(data[..4].try_into().unwrap()) as f32 * 0.01;
-                info!("Track pos: {}", track_position);
+                draw_screen(track_title, track_position / track_duration, playing, fbuf).await;
 
-                draw_screen(
-                    track_title,
-                    track_position / track_duration,
-                    playing,
-                    display,
-                )
-                .await;
+                display
+                    .show_raw_data(0, 0, WIDTH as u16, HEIGHT as u16, fbuf)
+                    .await
+                    .unwrap();
 
                 drop(lock);
 
@@ -511,6 +509,7 @@ async fn main(_spawner: Spawner) -> () {
     let ble_controller = ExternalController::<_, 1>::new(transport);
     let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
         HostResources::new();
+    let mut delay = Delay;
 
     // RNG source for security
     let _trng_source = TrngSource::new(peripherals.RNG, peripherals.ADC1);
@@ -535,29 +534,50 @@ async fn main(_spawner: Spawner) -> () {
 
     // GPIO Buttons
     let config = InputConfig::default().with_pull(Pull::Up);
-    let button_left = Input::new(peripherals.GPIO16, config);
-    let button_mid = Input::new(peripherals.GPIO17, config);
-    let button_right = Input::new(peripherals.GPIO18, config);
+    let button_left = Input::new(peripherals.GPIO5, config);
+    let button_mid = Input::new(peripherals.GPIO4, config);
+    let button_right = Input::new(peripherals.GPIO3, config);
 
-    // I2C Bus
-    let i2c = I2c::new(
-        peripherals.I2C0,
-        Config::default().with_frequency(Rate::from_khz(400)),
+    // Screen Pin mappings. Has been mapped based on IOMUX https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
+    // SCK/MOSI go straight to the SPI peripheral (it drives them in hardware).
+    let din = peripherals.GPIO9; // mosi 
+    let clk = peripherals.GPIO7;
+    let cs = Output::new(peripherals.GPIO44, Level::High, OutputConfig::default());
+    let dc = Output::new(peripherals.GPIO43, Level::Low, OutputConfig::default());
+    let rst = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
+
+    // SPI bus
+    let spi = Spi::new(
+        peripherals.SPI2,
+        Config::default()
+            .with_frequency(Rate::from_mhz(40))
+            .with_mode(Mode::_0),
     )
     .unwrap()
-    .with_sda(peripherals.GPIO4)
-    .with_scl(peripherals.GPIO5)
+    .with_sck(clk)
+    .with_mosi(din)
     .into_async();
 
-    // SSD1306 Display (can change)
-    let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306Async::new(
-        interface,
-        ssd1306::size::DisplaySize128x64,
-        ssd1306::rotation::DisplayRotation::Rotate0,
-    )
-    .into_buffered_graphics_mode();
-    display.init().await.unwrap();
+    // SpiBus + CS
+    let spi_device = ExclusiveDevice::new_no_delay(spi, cs).unwrap();
+
+    // Interface
+    let iface = SpiInterface::new(spi_device, dc);
+
+    // ILI9341 driver
+    let mut display = Builder::new(ILI9341Rgb565, iface)
+        .reset_pin(rst)
+        .color_order(lcd_async::options::ColorOrder::Bgr)
+        .orientation(
+            Orientation::new()
+                .flip_horizontal()
+                .rotate(lcd_async::options::Rotation::Deg270),
+        )
+        .display_size(HEIGHT as u16, WIDTH as u16)
+        .init(&mut delay)
+        .await
+        .unwrap();
+
     info!("Initalized display");
 
     // Check if bond info there
@@ -595,18 +615,25 @@ async fn main(_spawner: Spawner) -> () {
     }))
     .unwrap();
 
-    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    let frame_buffer = FRAME_BUFFER.take();
+    let mut fbuf =
+        RawFrameBuf::<Rgb565, _>::new(&mut frame_buffer[..], WIDTH as usize, HEIGHT as usize);
+
+    let style = MonoTextStyle::new(&FONT_10X20, Rgb565::RED);
 
     Text::with_alignment(
         "Connect to \"Widget\"\non Bluetooth",
-        Point::new(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2),
+        Point::new(WIDTH / 2, HEIGHT / 2),
         style,
         Alignment::Center,
     )
-    .draw(&mut display)
+    .draw(&mut fbuf)
     .unwrap();
 
-    display.flush().await.unwrap();
+    display
+        .show_raw_data(0, 0, WIDTH as u16, HEIGHT as u16, frame_buffer)
+        .await
+        .unwrap();
 
     info!("Starting!");
 
@@ -671,6 +698,7 @@ async fn main(_spawner: Spawner) -> () {
                     app_logic(
                         (&button_left, &button_mid, &button_right),
                         &client,
+                        &mut frame_buffer[..],
                         &mut display,
                     )
                     .await;

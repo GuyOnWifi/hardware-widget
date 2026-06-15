@@ -1,5 +1,6 @@
 # Hardware Widget
 
+![Actual Image](images/Actual.jpg)
 ![3D render](images/HardwareWidget.png)
 
 ## What is it?
@@ -18,7 +19,7 @@ Uses the very new BLE Audio Services (Media Control Service) to display music in
 
 ## Internals
 
-Features a Xiao ESP32-C3, with a lithium battery, 3 keycaps & a 2.4" color TFT Display.
+Features a Xiao ESP32-S3, with a lithium battery, 3 keycaps & a 2.4" color TFT Display.
 
 ![wiring](./images/Wiring.png)
 
@@ -49,3 +50,6 @@ Check it out [here](./zine.pdf)
 ## Building & Running
 
 Connect the ESP32 and run `cargo run --release`. The runner.sh file will take care of flashing & monitoring. Run in release mode for optimizations and shrinking bin sizes.
+
+## Demo 
+Check out https://youtu.be/r1qicAgG-jI for a demo!
