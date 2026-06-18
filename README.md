@@ -23,6 +23,9 @@ Features a Xiao ESP32-S3, with a lithium battery, 3 keycaps & a 2.4" color TFT D
 
 ![wiring](./images/Wiring.png)
 
+### Actual Wiring
+![actual wiring](./images/ActualWiring.jpg)
+
 ## Zine
 
 Check it out [here](./zine.pdf)
